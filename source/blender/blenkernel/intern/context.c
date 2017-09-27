@@ -57,6 +57,8 @@
 #include "BKE_sound.h"
 #include "BKE_workspace.h"
 
+#include "RE_engine.h"
+
 #include "RNA_access.h"
 
 #ifdef WITH_PYTHON
@@ -931,7 +933,7 @@ SceneLayer *CTX_data_scene_layer(const bContext *C)
 	}
 }
 
-const char *CTX_data_engine(const bContext *C)
+const char *CTX_data_engine_name(const bContext *C)
 {
 	const char *engine;
 
@@ -943,6 +945,11 @@ const char *CTX_data_engine(const bContext *C)
 	WorkSpace *workspace = CTX_wm_workspace(C);
 
 	return BKE_render_engine_get(scene, workspace);
+}
+
+RenderEngineType *CTX_data_engine(const bContext *C)
+{
+	return RE_engines_find(CTX_data_engine_name(C));
 }
 
 /**
@@ -1261,7 +1268,8 @@ void CTX_data_eval_ctx(const bContext *C, EvaluationContext *eval_ctx)
 
 	Scene *scene = CTX_data_scene(C);
 	SceneLayer *scene_layer = CTX_data_scene_layer(C);
+	RenderEngineType *engine = CTX_data_engine(C);
 	DEG_evaluation_context_init_from_scene(eval_ctx,
-	                                       scene, scene_layer,
+	                                       scene, scene_layer, engine,
 	                                       DAG_EVAL_VIEWPORT);
 }

@@ -42,6 +42,7 @@ struct ViewportEngineData;
 struct View3D;
 struct rcti;
 struct GPUOffScreen;
+struct RenderEngineType;
 struct WorkSpace;
 
 #include "BLI_sys_types.h"  /* for bool */
@@ -72,16 +73,16 @@ void DRW_notify_view_update(const struct bContext *C);
 void DRW_draw_view(const struct bContext *C);
 
 void DRW_draw_render_loop_ex(
-        const struct WorkSpace *workspace,
         struct Depsgraph *graph,
+        struct RenderEngineType *engine,
         struct ARegion *ar, struct View3D *v3d,
         const struct bContext *evil_C);
 void DRW_draw_render_loop(
         struct Depsgraph *graph,
         struct ARegion *ar, struct View3D *v3d);
 void DRW_draw_render_loop_offscreen(
-        const struct WorkSpace *workspace,
         struct Depsgraph *graph,
+        struct RenderEngineType *engine,
         struct ARegion *ar, struct View3D *v3d,
         struct GPUOffScreen *ofs);
 void DRW_draw_select_loop(
