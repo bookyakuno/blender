@@ -701,7 +701,7 @@ static bool screen_opengl_render_init(bContext *C, wmOperator *op)
 	}
 
 	/* create render */
-	oglrender->re = RE_NewRender(scene->id.name);
+	oglrender->re = RE_NewSceneRender(scene);
 	RE_SetEngineName(oglrender->re, BKE_render_engine_get(scene, workspace));
 
 	/* create image and image user */

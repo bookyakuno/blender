@@ -363,7 +363,8 @@ static struct DRWGlobalState {
 /** GPU Resource State: Memory storage between drawing. */
 static struct DRWResourceState {
 	GPUTexture **bound_texs;
-	GPUUniformBuffer **bound_ubos;
+
+	bool *bound_tex_slots;
 
 	int bind_tex_inc;
 	int bind_ubo_inc;
@@ -1724,12 +1725,10 @@ static void draw_geometry_prepare(
 	          ? viewport_matrix_override.mat[DRW_MAT_VIEWINV] : rv3d->viewinv;
 	winmat = (viewport_matrix_override.override[DRW_MAT_WIN])
 	          ? viewport_matrix_override.mat[DRW_MAT_WIN] : rv3d->winmat;
+	wininv = viewport_matrix_override.mat[DRW_MAT_WININV];
 
 	if (do_pi) {
-		if (viewport_matrix_override.override[DRW_MAT_WININV]) {
-			wininv = viewport_matrix_override.mat[DRW_MAT_WININV];
-		}
-		else {
+		if (!viewport_matrix_override.override[DRW_MAT_WININV]) {
 			invert_m4_m4(pi, winmat);
 			wininv = pi;
 		}
@@ -1834,35 +1833,52 @@ static void draw_geometry(DRWShadingGroup *shgroup, Gwn_Batch *geom, const float
 	draw_geometry_execute(shgroup, geom);
 }
 
-static void draw_bind_texture(GPUTexture *tex)
+static void bind_texture(GPUTexture *tex)
 {
-	if (RST.bound_texs[RST.bind_tex_inc] != tex) {
-		if (RST.bind_tex_inc >= 0) {
-			if (RST.bound_texs[RST.bind_tex_inc] != NULL) {
-				GPU_texture_unbind(RST.bound_texs[RST.bind_tex_inc]);
+	int bind_num = GPU_texture_bound_number(tex);
+	if (bind_num == -1) {
+		for (int i = 0; i < GPU_max_textures(); ++i) {
+			RST.bind_tex_inc = (RST.bind_tex_inc + 1) % GPU_max_textures();
+			if (RST.bound_tex_slots[RST.bind_tex_inc] == false) {
+				if (RST.bound_texs[RST.bind_tex_inc] != NULL) {
+					GPU_texture_unbind(RST.bound_texs[RST.bind_tex_inc]);
+				}
+				GPU_texture_bind(tex, RST.bind_tex_inc);
+				RST.bound_texs[RST.bind_tex_inc] = tex;
+				RST.bound_tex_slots[RST.bind_tex_inc] = true;
+				return;
 			}
-			RST.bound_texs[RST.bind_tex_inc] = tex;
-			GPU_texture_bind(tex, RST.bind_tex_inc);
 		}
-		else {
-			printf("Not enough texture slots! Reduce number of textures used by your shader.\n");
-		}
+
+		printf("Not enough texture slots! Reduce number of textures used by your shader.\n");
 	}
-	RST.bind_tex_inc--;
+	RST.bound_tex_slots[bind_num] = true;
 }
 
-static void draw_bind_ubo(GPUUniformBuffer *ubo)
+static void bind_ubo(GPUUniformBuffer *ubo)
 {
-	if (RST.bound_ubos[RST.bind_ubo_inc] != ubo) {
-		if (RST.bind_ubo_inc >= 0) {
-			RST.bound_ubos[RST.bind_ubo_inc] = ubo;
-			GPU_uniformbuffer_bind(ubo, RST.bind_ubo_inc);
-		}
-		else {
-			printf("Not enough ubo slots!\n");
-		}
+	if (RST.bind_ubo_inc < GPU_max_ubo_binds()) {
+		GPU_uniformbuffer_bind(ubo, RST.bind_ubo_inc);
+		RST.bind_ubo_inc++;
 	}
-	RST.bind_ubo_inc--;
+	else {
+		/* This is not depending on user input.
+		 * It is our responsability to make sure there enough slots. */
+		BLI_assert(0 && "Not enough ubo slots! This should not happen!\n");
+
+		/* printf so user can report bad behaviour */
+		printf("Not enough ubo slots! This should not happen!\n");
+	}
+}
+
+static void release_texture_slots(void)
+{
+	memset(RST.bound_tex_slots, 0x0, sizeof(bool) * GPU_max_textures());
+}
+
+static void release_ubo_slots(void)
+{
+	RST.bind_ubo_inc = 0;
 }
 
 static void draw_shgroup(DRWShadingGroup *shgroup, DRWState pass_state)
@@ -1870,8 +1886,6 @@ static void draw_shgroup(DRWShadingGroup *shgroup, DRWState pass_state)
 	BLI_assert(shgroup->shader);
 	BLI_assert(shgroup->interface);
 
-	RST.bind_tex_inc = GPU_max_textures() - 1; /* Reset texture counter. */
-	RST.bind_ubo_inc = GPU_max_ubo_binds() - 1; /* Reset UBO counter. */
 	DRWInterface *interface = shgroup->interface;
 	GPUTexture *tex;
 	GPUUniformBuffer *ubo;
@@ -1890,7 +1904,11 @@ static void draw_shgroup(DRWShadingGroup *shgroup, DRWState pass_state)
 		shgroup_dynamic_batch_from_calls(shgroup);
 	}
 
+	release_texture_slots();
+	release_ubo_slots();
+
 	DRW_state_set((pass_state & shgroup->state_extra_disable) | shgroup->state_extra);
+
 
 	/* Binding Uniform */
 	/* Don't check anything, Interface should already contain the least uniform as possible */
@@ -1920,7 +1938,7 @@ static void draw_shgroup(DRWShadingGroup *shgroup, DRWState pass_state)
 			case DRW_UNIFORM_TEXTURE:
 				tex = (GPUTexture *)uni->value;
 				BLI_assert(tex);
-				draw_bind_texture(tex);
+				bind_texture(tex);
 				GPU_shader_uniform_texture(shgroup->shader, uni->location, tex);
 				break;
 			case DRW_UNIFORM_BUFFER:
@@ -1929,12 +1947,12 @@ static void draw_shgroup(DRWShadingGroup *shgroup, DRWState pass_state)
 				}
 				tex = *((GPUTexture **)uni->value);
 				BLI_assert(tex);
-				draw_bind_texture(tex);
+				bind_texture(tex);
 				GPU_shader_uniform_texture(shgroup->shader, uni->location, tex);
 				break;
 			case DRW_UNIFORM_BLOCK:
 				ubo = (GPUUniformBuffer *)uni->value;
-				draw_bind_ubo(ubo);
+				bind_ubo(ubo);
 				GPU_shader_uniform_buffer(shgroup->shader, uni->location, ubo);
 				break;
 		}
@@ -2053,11 +2071,6 @@ static void DRW_draw_pass_ex(DRWPass *pass, DRWShadingGroup *start_group, DRWSha
 		}
 	}
 
-	/* Clear Bound Ubos */
-	for (int i = 0; i < GPU_max_ubo_binds(); i++) {
-		RST.bound_ubos[i] = NULL;
-	}
-
 	if (DST.shader) {
 		GPU_shader_unbind();
 		DST.shader = NULL;
@@ -2152,6 +2165,10 @@ bool DRW_object_is_renderable(Object *ob)
 {
 	Scene *scene = DST.draw_ctx.scene;
 	Object *obedit = scene->obedit;
+
+	if (!BKE_object_is_visible(ob)) {
+		return false;
+	}
 
 	if (ob->type == OB_MESH) {
 		if (ob == obedit) {
@@ -2273,8 +2290,8 @@ void DRW_framebuffer_init(
 			if (!is_depth) {
 				++color_attachment;
 			}
-			drw_texture_set_parameters(*fbotex.tex, fbotex.flag);
 			GPU_framebuffer_texture_attach(*fb, *fbotex.tex, color_attachment, 0);
+			drw_texture_set_parameters(*fbotex.tex, fbotex.flag);
 		}
 	}
 
@@ -2528,11 +2545,11 @@ static void DRW_viewport_var_init(void)
 	if (RST.bound_texs == NULL) {
 		RST.bound_texs = MEM_callocN(sizeof(GPUTexture *) * GPU_max_textures(), "Bound GPUTexture refs");
 	}
-
-	/* Alloc array of ubos reference. */
-	if (RST.bound_ubos == NULL) {
-		RST.bound_ubos = MEM_callocN(sizeof(GPUUniformBuffer *) * GPU_max_ubo_binds(), "Bound GPUUniformBuffer refs");
+	if (RST.bound_tex_slots == NULL) {
+		RST.bound_tex_slots = MEM_callocN(sizeof(bool) * GPU_max_textures(), "Bound Texture Slots");
 	}
+
+	memset(viewport_matrix_override.override, 0x0, sizeof(viewport_matrix_override.override));
 }
 
 void DRW_viewport_matrix_get(float mat[4][4], DRWViewportMatrixType type)
@@ -2599,8 +2616,7 @@ DefaultTextureList *DRW_viewport_texture_list_get(void)
 
 void DRW_viewport_request_redraw(void)
 {
-	/* XXXXXXXXXXX HAAAAAAAACKKKK */
-	WM_main_add_notifier(NC_MATERIAL | ND_SHADING_DRAW, NULL);
+	GPU_viewport_tag_update(DST.viewport);
 }
 
 /** \} */
@@ -3124,6 +3140,50 @@ static void DRW_debug_gpu_stats(void)
 	DRW_stats_draw(&rect);
 }
 
+/* -------------------------------------------------------------------- */
+
+/** \name View Update
+ * \{ */
+
+void DRW_notify_view_update(const bContext *C)
+{
+	struct Depsgraph *graph = CTX_data_depsgraph(C);
+	ARegion *ar = CTX_wm_region(C);
+	View3D *v3d = CTX_wm_view3d(C);
+	RegionView3D *rv3d = ar->regiondata;
+	Scene *scene = DEG_get_evaluated_scene(graph);
+	SceneLayer *sl = DEG_get_evaluated_scene_layer(graph);
+
+	if (rv3d->viewport == NULL) {
+		return;
+	}
+
+
+	/* Reset before using it. */
+	memset(&DST, 0x0, sizeof(DST));
+
+	DST.viewport = rv3d->viewport;
+	DST.draw_ctx = (DRWContextState){
+		ar, rv3d, v3d, scene, sl, OBACT_NEW(sl), C,
+	};
+
+	DRW_engines_enable(scene, sl);
+
+	for (LinkData *link = DST.enabled_engines.first; link; link = link->next) {
+		DrawEngineType *engine = link->data;
+		ViewportEngineData *data = DRW_viewport_engine_data_get(engine);
+
+		if (engine->view_update) {
+			engine->view_update(data);
+		}
+	}
+
+	DST.viewport = NULL;
+
+	DRW_engines_disable();
+}
+
+/** \} */
 
 /* -------------------------------------------------------------------- */
 
@@ -3694,7 +3754,7 @@ void DRW_engines_free(void)
 		GPU_texture_free(globals_ramp);
 
 	MEM_SAFE_FREE(RST.bound_texs);
-	MEM_SAFE_FREE(RST.bound_ubos);
+	MEM_SAFE_FREE(RST.bound_tex_slots);
 
 #ifdef WITH_CLAY_ENGINE
 	BLI_remlink(&R_engines, &DRW_engine_viewport_clay_type);
