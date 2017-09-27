@@ -3152,7 +3152,8 @@ void DRW_notify_view_update(const bContext *C)
 	View3D *v3d = CTX_wm_view3d(C);
 	RegionView3D *rv3d = ar->regiondata;
 	Scene *scene = DEG_get_evaluated_scene(graph);
-	SceneLayer *sl = DEG_get_evaluated_scene_layer(graph);
+	WorkSpace *workspace = CTX_wm_workspace(C);
+	SceneLayer *scene_layer = BKE_scene_layer_from_workspace_get(scene, workspace);
 
 	if (rv3d->viewport == NULL) {
 		return;
@@ -3164,10 +3165,10 @@ void DRW_notify_view_update(const bContext *C)
 
 	DST.viewport = rv3d->viewport;
 	DST.draw_ctx = (DRWContextState){
-		ar, rv3d, v3d, scene, sl, OBACT_NEW(sl), C,
+		ar, rv3d, v3d, scene, scene_layer, OBACT_NEW(scene_layer), C,
 	};
 
-	DRW_engines_enable(scene, sl);
+	DRW_engines_enable(scene, workspace, scene_layer);
 
 	for (LinkData *link = DST.enabled_engines.first; link; link = link->next) {
 		DrawEngineType *engine = link->data;
