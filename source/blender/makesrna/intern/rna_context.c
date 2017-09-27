@@ -39,6 +39,8 @@
 
 #ifdef RNA_RUNTIME
 
+#include "RE_engine.h"
+
 static PointerRNA rna_Context_manager_get(PointerRNA *ptr)
 {
 	bContext *C = (bContext *)ptr->data;
@@ -136,13 +138,15 @@ static PointerRNA rna_Context_scene_layer_get(PointerRNA *ptr)
 static void rna_Context_engine_get(PointerRNA *ptr, char *value)
  {
 	bContext *C = (bContext *)ptr->data;
-	strcpy(value, CTX_data_engine_name(C));
+	RenderEngineType *engine = CTX_data_engine(C);
+	strcpy(value, engine->idname);
 }
 
 static int rna_Context_engine_length(PointerRNA *ptr)
 {
 	bContext *C = (bContext *)ptr->data;
-	return strlen(CTX_data_engine_name(C));
+	RenderEngineType *engine = CTX_data_engine(C);
+	return strlen(engine->idname);
 }
 
 static PointerRNA rna_Context_scene_collection_get(PointerRNA *ptr)

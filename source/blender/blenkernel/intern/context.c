@@ -933,23 +933,17 @@ SceneLayer *CTX_data_scene_layer(const bContext *C)
 	}
 }
 
-const char *CTX_data_engine_name(const bContext *C)
-{
-	const char *engine;
-
-	if (ctx_data_pointer_verify(C, "engine", (void *)&engine)) {
-		return engine;
-	}
-
-	Scene *scene = CTX_data_scene(C);
-	WorkSpace *workspace = CTX_wm_workspace(C);
-
-	return BKE_render_engine_get(scene, workspace);
-}
-
 RenderEngineType *CTX_data_engine(const bContext *C)
 {
-	return RE_engines_find(CTX_data_engine_name(C));
+	const char *engine_name;
+
+	if (!ctx_data_pointer_verify(C, "engine", (void *)&engine_name)) {
+		Scene *scene = CTX_data_scene(C);
+		WorkSpace *workspace = CTX_wm_workspace(C);
+		engine_name = BKE_render_engine_get(scene, workspace);
+	}
+
+	return RE_engines_find(engine_name);
 }
 
 /**

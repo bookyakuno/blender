@@ -252,7 +252,6 @@ struct Scene *CTX_data_scene(const bContext *C);
 struct LayerCollection *CTX_data_layer_collection(const bContext *C);
 struct SceneCollection *CTX_data_scene_collection(const bContext *C);
 struct SceneLayer *CTX_data_scene_layer(const bContext *C);
-const char *CTX_data_engine_name(const bContext *C);
 struct RenderEngineType *CTX_data_engine(const bContext *C);
 struct ToolSettings *CTX_data_tool_settings(const bContext *C);
 

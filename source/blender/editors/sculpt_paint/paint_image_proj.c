@@ -5455,7 +5455,6 @@ static int texture_paint_image_from_view_exec(bContext *C, wmOperator *op)
 	char filename[FILE_MAX];
 
 	Scene *scene = CTX_data_scene(C);
-	WorkSpace *workspace = CTX_wm_workspace(C);
 	SceneLayer *scene_layer = CTX_data_scene_layer(C);
 	EvaluationContext eval_ctx;
 	ToolSettings *settings = scene->toolsettings;
