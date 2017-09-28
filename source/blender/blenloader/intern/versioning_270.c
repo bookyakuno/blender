@@ -60,6 +60,7 @@
 #include "DNA_genfile.h"
 
 #include "BKE_animsys.h"
+#include "BKE_brush.h"
 #include "BKE_colortools.h"
 #include "BKE_library.h"
 #include "BKE_main.h"
